@@ -46,7 +46,9 @@ jobs:
           }
 
           # ✅ 참여자 개인 public 레포
-          sync_repo "김지현" "https://github.com/jyun-KIM/Problem-Solving"
+          sync_repo "jyun-KIM" "https://github.com/jyun-KIM/Problem-Solving"
+          sync_repo "kmw10693" "https://github.com/kmw10693/BOJ"
+          
 
       - name: Commit & push if changed
         run: |
