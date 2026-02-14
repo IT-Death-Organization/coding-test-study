@@ -1,0 +1,59 @@
+name: Sync BaekjoonHub Repos
+
+on:
+  workflow_dispatch:      # 버튼 눌러 수동 실행
+  schedule:
+    - cron: "30 17 * * *"  # 매일 UTC 17:30 = KST 새벽 02:30
+  push:
+    paths:
+      - ".github/workflows/sync.yml"  # 워크플로우 수정 시 즉시 실행
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync member repositories into archive/
+        run: |
+          set -e
+          mkdir -p archive
+
+          sync_repo () {
+            NAME="$1"
+            URL="$2"
+
+            echo "=== Sync: $NAME from $URL ==="
+
+            rm -rf "/tmp/$NAME"
+            git clone --depth 1 "$URL" "/tmp/$NAME"
+
+            # 기존 폴더 삭제 후 새로 복사 (완전 동기화)
+            rm -rf "archive/$NAME"
+            mkdir -p "archive/$NAME"
+
+            # .git 같은 메타 제거 후 내용만 복사
+            rsync -a --delete --exclude ".git" "/tmp/$NAME/" "archive/$NAME/"
+          }
+
+          # ✅ 참여자 개인 public 레포
+          sync_repo "김지현" "https://github.com/jyun-KIM/Problem-Solving"
+
+      - name: Commit & push if changed
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git add archive
+            git commit -m "chore: sync baekjoon archives"
+            git push
+          else
+            echo "No changes to commit."
+          fi
