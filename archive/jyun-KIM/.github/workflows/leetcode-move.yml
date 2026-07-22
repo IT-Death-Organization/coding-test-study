@@ -1,56 +1,94 @@
 name: Move LeetCode Solutions
 
 on:
-  workflow_dispatch:  # 수동 실행 옵션 유지
   push:
+    branches:
+      - main
     paths:
-      - '[0-9][0-9][0-9][0-9]-*/**'  # LeetHub가 생성하는 폴더 패턴 (예: 0020-valid-parentheses)
+      - "[0-9][0-9][0-9][0-9]-*/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: move-leetcode-solutions
+  cancel-in-progress: false
 
 jobs:
   move-files:
+    # Action이 만든 커밋에는 실행하지 않음
+    if: github.actor != 'github-actions[bot]'
+
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # 최근 커밋 기록을 가져오기 위해 설정
+          fetch-depth: 0
 
-      - name: Move LeetCode solutions
+      - name: Move and push solutions
+        shell: bash
         run: |
-          # 디버깅을 위한 현재 디렉토리 내용 출력
-          echo "Current directory contents:"
-          ls -la
-          
-          # LeetCode 폴더가 없다면 생성
-          mkdir -p LeetCode
-          
-          # 변경된 파일 목록 확인
-          echo "Changed files in this push:"
-          git diff --name-only HEAD^ HEAD
-          
-          # LeetHub가 생성한 폴더들을 LeetCode 폴더로 이동
-          found=0
-          for d in [0-9][0-9][0-9][0-9]-*; do
-            if [ -d "$d" ]; then
-              echo "Moving directory: $d"
-              mv "$d" "LeetCode/" && found=1
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # LeetHub가 동시에 main을 갱신할 수 있으므로 최대 5번 재시도
+          for attempt in 1 2 3 4 5; do
+            echo "Attempt: $attempt"
+
+            # 매번 가장 최신 main에서 작업을 다시 시작
+            git fetch origin main
+            git reset --hard origin/main
+
+            mkdir -p LeetCode
+
+            moved=false
+
+            for directory in [0-9][0-9][0-9][0-9]-*; do
+              if [[ ! -d "$directory" ]]; then
+                continue
+              fi
+
+              echo "Moving $directory"
+
+              destination="LeetCode/$directory"
+
+              mkdir -p "$destination"
+              cp -a "$directory/." "$destination/"
+              rm -rf "$directory"
+
+              moved=true
+            done
+
+            if [[ "$moved" == false ]]; then
+              echo "No root-level LeetCode directories found."
+              exit 0
             fi
-          done
-          
-          # 이동할 폴더를 찾지 못했을 경우에도 오류로 처리하지 않음
-          if [ $found -eq 0 ]; then
-            echo "No matching directories found to move"
-          fi
 
-      - name: Commit & Push changes
-        run: |
-          # 변경사항이 있는지 확인
-          if git status --porcelain | grep .; then
-            git config --global user.name 'github-actions[bot]'
-            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
             git add -A
-            git commit -m "chore: Move LeetCode solutions to LeetCode folder"
-            git push
-          else
-            echo "No changes to commit"
-          fi
+
+            if git diff --cached --quiet; then
+              echo "No changes to commit."
+              exit 0
+            fi
+
+            git commit \
+              -m "chore: move LeetCode solutions to LeetCode directory"
+
+            if git push origin HEAD:main; then
+              echo "Successfully moved LeetCode solutions."
+              exit 0
+            fi
+
+            echo "Remote main changed. Retrying from latest main."
+            sleep 2
+          done
+
+          echo "Failed to push after 5 attempts."
+          exit 1
